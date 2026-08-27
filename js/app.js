@@ -6,13 +6,14 @@
  *
  * 数据结构（与导出文件一致，面向未来 AI 分析导出设计，无需迁移）：
  * {
+ *   "name": "日记名称（选填；未设置时界面显示默认「日记」）",
  *   "entries": [
  *     {
  *       "id": "20260826-001",
  *       "date": "2026-08-26",
  *       "items": [
  *         { "event": "解决了一个底层技术问题", "mood": "喜悦", "body": "精力充沛" },
- *         { "event": "只记事件也可以", "mood": "平静" },
+ *         { "event": "只记了事件，没选状态" },
  *         { "event": "旧版本记录", "reaction": "旧版自由文本（legacy，原样保留）" }
  *       ]
  *     }
@@ -20,10 +21,16 @@
  * }
  *
  * 字段说明：
- *   event  必填，客观描述
- *   mood   选填，MOOD_OPTIONS 之一；未选时省略该字段
- *   body   选填，BODY_OPTIONS 之一；未选时省略该字段
+ *   name      选填，日记名称（标题编辑处设置）
+ *   event     必填，客观描述
+ *   mood      选填，MOOD_OPTIONS 之一；未选时省略该字段
+ *   body      选填，BODY_OPTIONS 之一；未选时省略该字段
  *   reaction  旧版自由文本，仅存量数据会有，编辑时原样保留
+ *
+ * 派生说明：
+ *   Day X（第几天）= 该日期在「有记录的日期」升序中的序号（不含未记录的日子，
+ *   与"不强制每天写"的定位一致）。派生字段，不冗余存储，导入后自动一致。
+ *   emoji 为 UI 层显示映射（MOOD_EMOJI / BODY_EMOJI），JSON 始终存文字标签。
  *
  * 选项依据（最广泛验证的科学理论）：
  *   mood：Plutchik 情绪轮 8 种基本情绪（临床实践与情感计算中使用最广的离散情绪模型）
@@ -38,8 +45,15 @@
   var STORAGE_KEY = 'diary.records.v1';
   var MOOD_OPTIONS = ['平静', '喜悦', '安心', '期待', '惊讶', '悲伤', '厌恶', '愤怒', '恐惧'];
   var BODY_OPTIONS = ['放松', '精力充沛', '紧绷', '疲惫', '麻木'];
+  var MOOD_EMOJI = {
+    '平静': '😌', '喜悦': '😄', '安心': '🤗', '期待': '👀',
+    '惊讶': '😲', '悲伤': '😢', '厌恶': '🤢', '愤怒': '😠', '恐惧': '😨'
+  };
+  var BODY_EMOJI = {
+    '放松': '🧘', '精力充沛': '⚡', '紧绷': '😖', '疲惫': '😪', '麻木': '🧊'
+  };
 
-  var data = { entries: [] };
+  var data = { name: '', entries: [] };
   var expanded = new Set();
   var editing = null; // { dayId, index }
   var draft = null; // { event, mood, body } 编辑草稿
@@ -52,6 +66,9 @@
   var elFormRows = document.getElementById('form-rows');
   var elList = document.getElementById('list');
   var elToast = document.getElementById('toast');
+  var elTitle = document.getElementById('app-title');
+  var elTitleEdit = document.getElementById('btn-title-edit');
+  var elDayNum = document.getElementById('form-daynum');
   var elSheet = document.getElementById('sheet');
   var elSheetBackdrop = document.getElementById('sheet-backdrop');
   var elSheetTitle = document.getElementById('sheet-title');
@@ -67,6 +84,23 @@
   }
   function validDateStr(s) {
     return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s + 'T00:00:00'));
+  }
+
+  function emojiOf(kind, value) {
+    var map = kind === 'mood' ? MOOD_EMOJI : BODY_EMOJI;
+    return map[value] || '';
+  }
+
+  // Day X：该日期在「有记录的日期」升序中的序号（未记录的日子不计入）
+  function dayNum(dateStr) {
+    var set = {};
+    data.entries.forEach(function (e) { set[e.date] = true; });
+    var dates = Object.keys(set).sort();
+    var n = 1;
+    for (var i = 0; i < dates.length; i++) {
+      if (dates[i] < dateStr) n++;
+    }
+    return n;
   }
 
   // 生成形如 20260826-001 的唯一 id（date + 当日序号）
@@ -98,6 +132,7 @@
       var parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.entries)) return;
       data = {
+        name: typeof parsed.name === 'string' ? parsed.name.trim() : '',
         entries: parsed.entries
           .filter(function (e) { return e && validDateStr(e.date) && Array.isArray(e.items); })
           .map(function (e) {
@@ -110,7 +145,7 @@
       };
     } catch (err) {
       // 数据损坏时保留空状态，避免应用不可用
-      data = { entries: [] };
+      data = { name: '', entries: [] };
     }
   }
 
@@ -171,6 +206,51 @@
     return b;
   }
 
+  // ---------- 日记名称（与大标题结合） ----------
+  function renderTitle() {
+    elTitle.textContent = data.name || '日记';
+  }
+
+  function startTitleEdit() {
+    if (document.getElementById('title-input')) return;
+    var head = elTitle.parentNode;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'title-input';
+    input.className = 'inp title-input';
+    input.value = data.name;
+    input.placeholder = '日记';
+    input.maxLength = 20;
+    input.autocomplete = 'off';
+    head.insertBefore(input, elTitle);
+    elTitle.hidden = true;
+    elTitleEdit.hidden = true;
+    input.focus();
+    input.select();
+    var done = false;
+    function finish(save) {
+      if (done) return;
+      done = true;
+      if (save) {
+        var v = input.value.trim();
+        data.name = v; // 空则恢复默认「日记」
+        persist();
+      }
+      head.removeChild(input);
+      elTitle.hidden = false;
+      elTitleEdit.hidden = false;
+      renderTitle();
+    }
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') finish(true);
+      else if (ev.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', function () { finish(true); });
+  }
+
+  elTitleEdit.addEventListener('click', startTitleEdit);
+  elTitle.addEventListener('click', startTitleEdit);
+
   // ---------- 底部弹框选择（移动端友好：底部上滑面板 + 大触控目标） ----------
   function chip(label, selected) {
     var b = document.createElement('button');
@@ -180,15 +260,18 @@
     return b;
   }
 
-  function openSheet(title, options, current, onPick) {
-    elSheetTitle.textContent = title + '（可不选）';
+  // 交互：点已选中的选项 = 取消选择；不选 = 直接关闭
+  function openSheet(kind, options, current, onPick) {
+    elSheetTitle.textContent = kind === 'mood' ? '选择情绪' : '选择身体';
     elSheetOptions.textContent = '';
-    var none = chip('不选', !current);
-    none.addEventListener('click', function () { onPick(''); closeSheet(); });
-    elSheetOptions.appendChild(none);
     options.forEach(function (opt) {
-      var c = chip(opt, opt === current);
-      c.addEventListener('click', function () { onPick(opt); closeSheet(); });
+      var selected = opt === current;
+      var em = emojiOf(kind, opt);
+      var c = chip(em ? em + ' ' + opt : opt, selected);
+      c.addEventListener('click', function () {
+        onPick(selected ? '' : opt);
+        closeSheet();
+      });
       elSheetOptions.appendChild(c);
     });
     elSheetBackdrop.hidden = false;
@@ -210,13 +293,13 @@
   });
 
   // 表单/编辑共用的选择按钮
-  function pickBtn(label, options, value, onPick) {
+  function pickBtn(label, kind, options, value, onPick) {
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn pick' + (value ? ' picked' : '');
-    b.textContent = value ? label + '：' + value : label + '（可选）';
+    b.textContent = value ? label + '：' + emojiOf(kind, value) + ' ' + value : label + '（可选）';
     b.addEventListener('click', function () {
-      openSheet('选择' + label, options, value, onPick);
+      openSheet(kind, options, value, onPick);
     });
     return b;
   }
@@ -236,11 +319,11 @@
       inp.addEventListener('input', function () { row.event = inp.value; });
       var picks = document.createElement('div');
       picks.className = 'pickers';
-      picks.appendChild(pickBtn('情绪', MOOD_OPTIONS, row.mood, function (v) {
+      picks.appendChild(pickBtn('情绪', 'mood', MOOD_OPTIONS, row.mood, function (v) {
         row.mood = v;
         renderFormRows();
       }));
-      picks.appendChild(pickBtn('身体', BODY_OPTIONS, row.body, function (v) {
+      picks.appendChild(pickBtn('身体', 'body', BODY_OPTIONS, row.body, function (v) {
         row.body = v;
         renderFormRows();
       }));
@@ -260,6 +343,13 @@
     formRows.push({ event: '', mood: '', body: '' });
     renderFormRows();
   });
+
+  function updateFormDayNum() {
+    var d = elDate.value;
+    elDayNum.textContent = validDateStr(d) ? 'Day ' + dayNum(d) : '';
+  }
+
+  elDate.addEventListener('change', updateFormDayNum);
 
   elForm.addEventListener('submit', function (ev) {
     ev.preventDefault();
@@ -342,8 +432,8 @@
 
   function itemMeta(item) {
     var meta = [];
-    if (item.mood) meta.push('情绪 · ' + item.mood);
-    if (item.body) meta.push('身体 · ' + item.body);
+    if (item.mood) meta.push('情绪 · ' + emojiOf('mood', item.mood) + ' ' + item.mood);
+    if (item.body) meta.push('身体 · ' + emojiOf('body', item.body) + ' ' + item.body);
     if (item.reaction) meta.push('状态 · ' + item.reaction);
     return meta.join('    ');
   }
@@ -362,11 +452,11 @@
         evIn.addEventListener('input', function () { draft.event = evIn.value; });
         var picks = document.createElement('div');
         picks.className = 'pickers';
-        picks.appendChild(pickBtn('情绪', MOOD_OPTIONS, draft.mood, function (v) {
+        picks.appendChild(pickBtn('情绪', 'mood', MOOD_OPTIONS, draft.mood, function (v) {
           draft.mood = v;
           render();
         }));
-        picks.appendChild(pickBtn('身体', BODY_OPTIONS, draft.body, function (v) {
+        picks.appendChild(pickBtn('身体', 'body', BODY_OPTIONS, draft.body, function (v) {
           draft.body = v;
           render();
         }));
@@ -457,6 +547,10 @@
       dateLabel.className = 'day-date';
       dateLabel.textContent = day.date;
 
+      var dayNumEl = document.createElement('span');
+      dayNumEl.className = 'day-num';
+      dayNumEl.textContent = 'Day ' + dayNum(day.date);
+
       var count = document.createElement('span');
       count.className = 'day-count';
       count.textContent = day.items.length + ' 条';
@@ -469,6 +563,7 @@
 
       head.appendChild(toggle);
       head.appendChild(dateLabel);
+      head.appendChild(dayNumEl);
       head.appendChild(count);
       head.appendChild(actions);
       li.appendChild(head);
@@ -478,8 +573,8 @@
     });
   }
 
-  // ---------- 保存为图片（极简风，移动端竖版长图） ----------
-  var IMG_FONT = '"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif';
+  // ---------- 保存为图片（极简风，移动端竖版长图，仅单日） ----------
+  var IMG_FONT = '"PingFang SC","Microsoft YaHei","Noto Sans SC","Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 
   function weekday(dateStr) {
     var names = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -511,8 +606,18 @@
     var contentW = W - padX * 2;
     var meas = document.createElement('canvas').getContext('2d');
 
-    var header = day.date + ' · ' + weekday(day.date);
-    var by = padTop + 44 + 28 + 40; // 标题 + 间距 + 分隔线 + 间距
+    var name = data.name;
+    var headLine = 'Day ' + dayNum(day.date) + ' · ' + day.date + ' · ' + weekday(day.date);
+
+    var nameLines = [];
+    var by; // 第一条内容的 y
+    if (name) {
+      meas.font = '600 30px ' + IMG_FONT;
+      nameLines = wrapText(meas, name, contentW);
+      by = padTop + nameLines.length * 42 + 14 + 32 + 26 + 40;
+    } else {
+      by = padTop + 44 + 28 + 40;
+    }
 
     var blocks = day.items.map(function (item) {
       meas.font = '28px ' + IMG_FONT;
@@ -538,17 +643,34 @@
     ctx.fillRect(0, 0, W, H);
     ctx.textBaseline = 'top';
 
-    // 日期标题
-    ctx.fillStyle = '#222';
-    ctx.font = '600 34px ' + IMG_FONT;
-    ctx.fillText(header, padX, padTop);
+    var dividerY;
+    if (name) {
+      // 第一行：名称
+      ctx.fillStyle = '#222';
+      ctx.font = '600 30px ' + IMG_FONT;
+      nameLines.forEach(function (line, i) {
+        ctx.fillText(line, padX, padTop + i * 42);
+      });
+      // 第二行：Day X · 日期 · 星期
+      var y2 = padTop + nameLines.length * 42 + 14;
+      ctx.fillStyle = '#999';
+      ctx.font = '24px ' + IMG_FONT;
+      ctx.fillText(headLine, padX, y2);
+      dividerY = y2 + 32 + 26;
+    } else {
+      // 单行头部：Day X · 日期 · 星期
+      ctx.fillStyle = '#222';
+      ctx.font = '600 34px ' + IMG_FONT;
+      ctx.fillText(headLine, padX, padTop);
+      dividerY = padTop + 44 + 28;
+    }
 
     // 分隔线
     ctx.strokeStyle = '#e6e6e6';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(padX, padTop + 44 + 28);
-    ctx.lineTo(W - padX, padTop + 44 + 28);
+    ctx.moveTo(padX, dividerY);
+    ctx.lineTo(W - padX, dividerY);
     ctx.stroke();
 
     // 事件条目
@@ -639,6 +761,7 @@
       try {
         var parsed = JSON.parse(String(reader.result));
         if (!parsed || !Array.isArray(parsed.entries)) throw new Error('结构错误');
+        var name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
         var entries = [];
         for (var i = 0; i < parsed.entries.length; i++) {
           var e = parsed.entries[i];
@@ -657,11 +780,12 @@
             countItems(data.entries) + ' 条记录。继续？';
           if (!confirm(msg)) return;
         }
-        data = { entries: entries };
+        data = { name: name, entries: entries };
         expanded.clear();
         editing = null;
         draft = null;
         persist();
+        renderTitle();
         render();
         toast('导入完成：' + entries.length + ' 天');
       } catch (err) {
@@ -674,6 +798,8 @@
   // ---------- 初始化 ----------
   elDate.value = todayStr();
   load();
+  renderTitle();
+  updateFormDayNum();
   renderFormRows();
   render();
 })();

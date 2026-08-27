@@ -19,12 +19,18 @@
 </head>
 <body>
 <main>
-  <h1>日记</h1>
+  <header class="app-head">
+    <h1 id="app-title">日记</h1>
+    <button type="button" class="btn title-edit" id="btn-title-edit" title="修改日记名称">✎</button>
+  </header>
 
   <form id="entry-form" novalidate>
     <div class="form-row">
       <label>日期
-        <input type="date" id="f-date" class="inp">
+        <span class="date-line">
+          <input type="date" id="f-date" class="inp">
+          <span class="day-badge" id="form-daynum"></span>
+        </span>
       </label>
     </div>
     <div class="rows-label">事件（同一天可记录多条，每条可独立选择情绪/身体）</div>
@@ -62,6 +68,7 @@
     <h3 id="sheet-title"></h3>
     <button type="button" class="btn" id="btn-sheet-close">关闭</button>
   </div>
+  <p class="sheet-hint">点击已选中的选项可取消；不选直接关闭即可</p>
   <div id="sheet-options" class="chips"></div>
 </div>
 
