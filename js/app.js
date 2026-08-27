@@ -503,7 +503,7 @@
           autosize(evIn);
         });
         autosize(evIn);
-        // 保存/取消与情绪、身体选择按钮同一行（同高），输入框独占整行宽度
+        // 第一行：情绪/身体选择按钮；第二行：保存（左）/ 取消（右）
         var picks = document.createElement('div');
         picks.className = 'pickers';
         picks.appendChild(pickBtn('情绪', 'mood', MOOD_OPTIONS, draft.mood, function (v) {
@@ -528,8 +528,10 @@
           draft = null;
           render();
         });
-        picks.appendChild(ok);
-        picks.appendChild(cancel);
+        var act = document.createElement('div');
+        act.className = 'edit-actions';
+        act.appendChild(ok);
+        act.appendChild(cancel);
         var main = document.createElement('div');
         main.className = 'item-main';
         main.appendChild(evIn);
@@ -540,6 +542,7 @@
           note.textContent = '旧版自由文本将保留：' + item.reaction;
           main.appendChild(note);
         }
+        main.appendChild(act);
         row.appendChild(main);
         evIn.focus();
       } else {

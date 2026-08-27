@@ -73,6 +73,8 @@ li.day { background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; margin
 .day-body { border-top: 1px solid #eee; padding: 10px 12px; }
 .item { padding: 8px 0; border-bottom: 1px dashed #eee; }
 .item:last-child { border-bottom: none; }
+.edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+.edit-actions .btn { flex: 1; min-height: 42px; }
 .item-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .item-foot .item-reaction { flex: 1; margin: 0; }
 .item-foot .item-actions { margin-left: auto; }
