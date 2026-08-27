@@ -346,12 +346,13 @@
         row.body = v;
         renderFormRows();
       }));
-      if (i > 0) {
-        picks.appendChild(button('移除', function () {
-          formRows.splice(i, 1);
-          renderFormRows();
-        }, 'row-del'));
-      }
+      // 任意一行（含第一条）都可移除；删完最后一行时补一条空白行
+      picks.appendChild(button('移除', function () {
+        if (!confirm('删除这条事件？未保存的内容将丢失。')) return;
+        formRows.splice(i, 1);
+        if (!formRows.length) formRows.push({ event: '', mood: '', body: '' });
+        renderFormRows();
+      }, 'row-del'));
       div.appendChild(inp);
       div.appendChild(picks);
       elFormRows.appendChild(div);
