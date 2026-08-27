@@ -11,27 +11,54 @@
  *       "id": "20260826-001",
  *       "date": "2026-08-26",
  *       "items": [
- *         { "event": "事件，客观描述发生了什么", "reaction": "可选的状态/反应描述" }
+ *         { "event": "解决了一个底层技术问题", "mood": "喜悦", "body": "精力充沛" },
+ *         { "event": "只记事件也可以", "mood": "平静" },
+ *         { "event": "旧版本记录", "reaction": "旧版自由文本（legacy，原样保留）" }
  *       ]
  *     }
  *   ]
  * }
+ *
+ * 字段说明：
+ *   event  必填，客观描述
+ *   mood   选填，MOOD_OPTIONS 之一；未选时省略该字段
+ *   body   选填，BODY_OPTIONS 之一；未选时省略该字段
+ *   reaction  旧版自由文本，仅存量数据会有，编辑时原样保留
+ *
+ * 选项依据（最广泛验证的科学理论）：
+ *   mood：Plutchik 情绪轮 8 种基本情绪（临床实践与情感计算中使用最广的离散情绪模型）
+ *         + 「平静」中性锚点（Russell 环状模型中心区，低唤醒）
+ *         映射：喜悦=Joy 安心=Trust 期待=Anticipation 惊讶=Surprise
+ *               悲伤=Sadness 厌恶=Disgust 愤怒=Anger 恐惧=Fear
+ *   body：基于唤醒维度（arousal，环状模型核心维度）与躯体标记研究中最常见的验证状态
  */
 (function () {
   'use strict';
 
   var STORAGE_KEY = 'diary.records.v1';
+  var MOOD_OPTIONS = ['平静', '喜悦', '安心', '期待', '惊讶', '悲伤', '厌恶', '愤怒', '恐惧'];
+  var BODY_OPTIONS = ['放松', '精力充沛', '紧绷', '疲惫', '麻木'];
+
   var data = { entries: [] };
   var expanded = new Set();
   var editing = null; // { dayId, index }
+  var draft = null; // { event, mood, body } 编辑草稿
+  var formRows = [{ event: '', mood: '', body: '' }];
   var toastTimer = null;
+  var lastImageName = '';
 
   var elForm = document.getElementById('entry-form');
   var elDate = document.getElementById('f-date');
-  var elEvent = document.getElementById('f-event');
-  var elReaction = document.getElementById('f-reaction');
+  var elFormRows = document.getElementById('form-rows');
   var elList = document.getElementById('list');
   var elToast = document.getElementById('toast');
+  var elSheet = document.getElementById('sheet');
+  var elSheetBackdrop = document.getElementById('sheet-backdrop');
+  var elSheetTitle = document.getElementById('sheet-title');
+  var elSheetOptions = document.getElementById('sheet-options');
+  var elImgBackdrop = document.getElementById('img-backdrop');
+  var elImg = document.getElementById('img-preview');
+  var elImgHint = document.getElementById('img-hint');
 
   function pad(n) { return String(n).padStart(2, '0'); }
   function todayStr() {
@@ -77,11 +104,7 @@
             return {
               id: (typeof e.id === 'string' && e.id) ? e.id : nextId(e.date),
               date: e.date,
-              items: e.items
-                .filter(function (it) { return it && typeof it.event === 'string' && it.event.trim(); })
-                .map(function (it) {
-                  return { event: it.event, reaction: typeof it.reaction === 'string' ? it.reaction : '' };
-                })
+              items: normalizeItems(e.items)
             };
           })
       };
@@ -89,6 +112,29 @@
       // 数据损坏时保留空状态，避免应用不可用
       data = { entries: [] };
     }
+  }
+
+  // 归一化单条事件：event 必填；mood/body 选填字符串；reaction 为旧版自由文本（保留）
+  function normalizeItems(items) {
+    return items
+      .filter(function (it) { return it && typeof it.event === 'string' && it.event.trim(); })
+      .map(function (it) {
+        return {
+          event: it.event,
+          mood: typeof it.mood === 'string' ? it.mood : '',
+          body: typeof it.body === 'string' ? it.body : '',
+          reaction: typeof it.reaction === 'string' ? it.reaction : ''
+        };
+      });
+  }
+
+  // 组装导出/存储用的 item：未选的 mood/body 省略
+  function buildItem(event, mood, body, reaction) {
+    var item = { event: event };
+    if (mood) item.mood = mood;
+    if (body) item.body = body;
+    if (reaction) item.reaction = reaction;
+    return item;
   }
 
   function persist() {
@@ -125,6 +171,123 @@
     return b;
   }
 
+  // ---------- 底部弹框选择（移动端友好：底部上滑面板 + 大触控目标） ----------
+  function chip(label, selected) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (selected ? ' selected' : '');
+    b.textContent = label;
+    return b;
+  }
+
+  function openSheet(title, options, current, onPick) {
+    elSheetTitle.textContent = title + '（可不选）';
+    elSheetOptions.textContent = '';
+    var none = chip('不选', !current);
+    none.addEventListener('click', function () { onPick(''); closeSheet(); });
+    elSheetOptions.appendChild(none);
+    options.forEach(function (opt) {
+      var c = chip(opt, opt === current);
+      c.addEventListener('click', function () { onPick(opt); closeSheet(); });
+      elSheetOptions.appendChild(c);
+    });
+    elSheetBackdrop.hidden = false;
+    elSheet.hidden = false;
+  }
+
+  function closeSheet() {
+    elSheetBackdrop.hidden = true;
+    elSheet.hidden = true;
+  }
+
+  elSheetBackdrop.addEventListener('click', closeSheet);
+  document.getElementById('btn-sheet-close').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') {
+      closeSheet();
+      elImgBackdrop.hidden = true;
+    }
+  });
+
+  // 表单/编辑共用的选择按钮
+  function pickBtn(label, options, value, onPick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn pick' + (value ? ' picked' : '');
+    b.textContent = value ? label + '：' + value : label + '（可选）';
+    b.addEventListener('click', function () {
+      openSheet('选择' + label, options, value, onPick);
+    });
+    return b;
+  }
+
+  // ---------- 多事件表单 ----------
+  function renderFormRows() {
+    elFormRows.textContent = '';
+    formRows.forEach(function (row, i) {
+      var div = document.createElement('div');
+      div.className = 'frow';
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'inp';
+      inp.placeholder = '发生了什么';
+      inp.autocomplete = 'off';
+      inp.value = row.event;
+      inp.addEventListener('input', function () { row.event = inp.value; });
+      var picks = document.createElement('div');
+      picks.className = 'pickers';
+      picks.appendChild(pickBtn('情绪', MOOD_OPTIONS, row.mood, function (v) {
+        row.mood = v;
+        renderFormRows();
+      }));
+      picks.appendChild(pickBtn('身体', BODY_OPTIONS, row.body, function (v) {
+        row.body = v;
+        renderFormRows();
+      }));
+      if (i > 0) {
+        picks.appendChild(button('移除', function () {
+          formRows.splice(i, 1);
+          renderFormRows();
+        }, 'row-del'));
+      }
+      div.appendChild(inp);
+      div.appendChild(picks);
+      elFormRows.appendChild(div);
+    });
+  }
+
+  document.getElementById('btn-add-row').addEventListener('click', function () {
+    formRows.push({ event: '', mood: '', body: '' });
+    renderFormRows();
+  });
+
+  elForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var date = elDate.value;
+    if (!validDateStr(date)) { toast('请选择日期'); return; }
+    var valid = formRows.filter(function (r) { return r.event.trim(); });
+    if (!valid.length) { toast('至少填写一条事件'); return; }
+
+    var day = null;
+    for (var i = 0; i < data.entries.length; i++) {
+      if (data.entries[i].date === date) { day = data.entries[i]; break; }
+    }
+    if (!day) {
+      day = { id: nextId(date), date: date, items: [] };
+      data.entries.push(day);
+    }
+    valid.forEach(function (r) {
+      day.items.push(buildItem(r.event.trim(), r.mood, r.body));
+    });
+    formRows = [{ event: '', mood: '', body: '' }];
+    renderFormRows();
+    expanded.add(day.id);
+    persist();
+    render();
+    toast('已保存 ' + valid.length + ' 条');
+  });
+
+  // ---------- 历史列表 ----------
   function deleteItem(day, index) {
     if (!confirm('删除这条事件记录？')) return;
     day.items.splice(index, 1);
@@ -133,6 +296,7 @@
       expanded.delete(day.id);
     }
     editing = null;
+    draft = null;
     persist();
     render();
   }
@@ -144,6 +308,7 @@
     data.entries = data.entries.filter(function (e) { return e.id !== dayId; });
     expanded.delete(dayId);
     editing = null;
+    draft = null;
     persist();
     render();
   }
@@ -170,8 +335,17 @@
       day.id = nextId(v);
     }
     editing = null;
+    draft = null;
     persist();
     render();
+  }
+
+  function itemMeta(item) {
+    var meta = [];
+    if (item.mood) meta.push('情绪 · ' + item.mood);
+    if (item.body) meta.push('身体 · ' + item.body);
+    if (item.reaction) meta.push('状态 · ' + item.reaction);
+    return meta.join('    ');
   }
 
   function renderBody(day) {
@@ -184,46 +358,71 @@
         var evIn = document.createElement('input');
         evIn.type = 'text';
         evIn.className = 'inp';
-        evIn.value = item.event;
-        var rcIn = document.createElement('textarea');
-        rcIn.className = 'inp';
-        rcIn.rows = 2;
-        rcIn.value = item.reaction || '';
+        evIn.value = draft.event;
+        evIn.addEventListener('input', function () { draft.event = evIn.value; });
+        var picks = document.createElement('div');
+        picks.className = 'pickers';
+        picks.appendChild(pickBtn('情绪', MOOD_OPTIONS, draft.mood, function (v) {
+          draft.mood = v;
+          render();
+        }));
+        picks.appendChild(pickBtn('身体', BODY_OPTIONS, draft.body, function (v) {
+          draft.body = v;
+          render();
+        }));
+        var main = document.createElement('div');
+        main.appendChild(evIn);
+        main.appendChild(picks);
+        if (item.reaction) {
+          var note = document.createElement('p');
+          note.className = 'item-reaction';
+          note.textContent = '旧版自由文本将保留：' + item.reaction;
+          main.appendChild(note);
+        }
         var ok = button('保存', function () {
-          var v = evIn.value.trim();
+          var v = draft.event.trim();
           if (!v) { toast('事件不能为空'); return; }
-          day.items[index] = { event: v, reaction: rcIn.value.trim() };
+          day.items[index] = buildItem(v, draft.mood, draft.body, item.reaction);
           editing = null;
+          draft = null;
           persist();
           render();
         });
-        var cancel = button('取消', function () { editing = null; render(); });
-        row.appendChild(evIn);
-        row.appendChild(rcIn);
-        row.appendChild(ok);
-        row.appendChild(cancel);
+        var cancel = button('取消', function () {
+          editing = null;
+          draft = null;
+          render();
+        });
+        var act = document.createElement('span');
+        act.className = 'item-actions';
+        act.appendChild(ok);
+        act.appendChild(cancel);
+        row.appendChild(main);
+        row.appendChild(act);
         evIn.focus();
       } else {
-        var main = document.createElement('div');
+        var main2 = document.createElement('div');
         var ev = document.createElement('p');
         ev.className = 'item-event';
         ev.textContent = item.event;
-        main.appendChild(ev);
-        if (item.reaction) {
+        main2.appendChild(ev);
+        var meta = itemMeta(item);
+        if (meta) {
           var rc = document.createElement('p');
           rc.className = 'item-reaction';
-          rc.textContent = item.reaction;
-          main.appendChild(rc);
+          rc.textContent = meta;
+          main2.appendChild(rc);
         }
-        var act = document.createElement('span');
-        act.className = 'item-actions';
-        act.appendChild(button('编辑', function () {
+        var act2 = document.createElement('span');
+        act2.className = 'item-actions';
+        act2.appendChild(button('编辑', function () {
           editing = { dayId: day.id, index: index };
+          draft = { event: item.event, mood: item.mood || '', body: item.body || '' };
           render();
         }));
-        act.appendChild(button('删除', function () { deleteItem(day, index); }, 'danger'));
-        row.appendChild(main);
-        row.appendChild(act);
+        act2.appendChild(button('删除', function () { deleteItem(day, index); }, 'danger'));
+        row.appendChild(main2);
+        row.appendChild(act2);
       }
       body.appendChild(row);
     });
@@ -264,6 +463,7 @@
 
       var actions = document.createElement('span');
       actions.className = 'day-actions';
+      actions.appendChild(button('图片', function () { renderDayImage(day); }));
       actions.appendChild(button('改日期', function () { editDate(day.id); }));
       actions.appendChild(button('删除当天', function () { deleteDay(day.id); }, 'danger'));
 
@@ -278,31 +478,138 @@
     });
   }
 
-  // ---------- 新增 ----------
-  elForm.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    var date = elDate.value;
-    var eventText = elEvent.value.trim();
-    if (!validDateStr(date)) { toast('请选择日期'); return; }
-    if (!eventText) { toast('事件不能为空'); elEvent.focus(); return; }
-    var reaction = elReaction.value.trim();
+  // ---------- 保存为图片（极简风，移动端竖版长图） ----------
+  var IMG_FONT = '"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif';
 
-    var day = null;
-    for (var i = 0; i < data.entries.length; i++) {
-      if (data.entries[i].date === date) { day = data.entries[i]; break; }
-    }
-    if (!day) {
-      day = { id: nextId(date), date: date, items: [] };
-      data.entries.push(day);
-    }
-    day.items.push({ event: eventText, reaction: reaction });
-    elEvent.value = '';
-    elReaction.value = '';
-    expanded.add(day.id);
-    persist();
-    render();
-    toast('已保存');
+  function weekday(dateStr) {
+    var names = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    return names[new Date(dateStr + 'T00:00:00').getDay()];
+  }
+
+  // 按字符逐字换行（中文场景）
+  function wrapText(ctx, text, maxWidth) {
+    var lines = [];
+    String(text).split('\n').forEach(function (part) {
+      var line = '';
+      for (var i = 0; i < part.length; i++) {
+        var ch = part[i];
+        if (line && ctx.measureText(line + ch).width > maxWidth) {
+          lines.push(line);
+          line = ch;
+        } else {
+          line += ch;
+        }
+      }
+      lines.push(line);
+    });
+    if (!lines.length) lines.push('');
+    return lines;
+  }
+
+  function renderDayImage(day) {
+    var W = 750, padX = 56, padTop = 64, padBottom = 60;
+    var contentW = W - padX * 2;
+    var meas = document.createElement('canvas').getContext('2d');
+
+    var header = day.date + ' · ' + weekday(day.date);
+    var by = padTop + 44 + 28 + 40; // 标题 + 间距 + 分隔线 + 间距
+
+    var blocks = day.items.map(function (item) {
+      meas.font = '28px ' + IMG_FONT;
+      var lines = wrapText(meas, item.event, contentW);
+      var block = { lines: lines };
+      var h = lines.length * 44;
+      var meta = itemMeta(item);
+      if (meta) {
+        meas.font = '22px ' + IMG_FONT;
+        block.metaLines = wrapText(meas, meta, contentW);
+        h += 12 + block.metaLines.length * 32;
+      }
+      block.h = h;
+      return block;
+    });
+
+    var H = by + blocks.reduce(function (n, b) { return n + b.h + 32; }, 0) + 40 + padBottom;
+    var canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = 'top';
+
+    // 日期标题
+    ctx.fillStyle = '#222';
+    ctx.font = '600 34px ' + IMG_FONT;
+    ctx.fillText(header, padX, padTop);
+
+    // 分隔线
+    ctx.strokeStyle = '#e6e6e6';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padX, padTop + 44 + 28);
+    ctx.lineTo(W - padX, padTop + 44 + 28);
+    ctx.stroke();
+
+    // 事件条目
+    blocks.forEach(function (b) {
+      ctx.fillStyle = '#222';
+      ctx.font = '28px ' + IMG_FONT;
+      b.lines.forEach(function (line, i) {
+        ctx.fillText(line, padX, by + i * 44);
+      });
+      by += b.lines.length * 44;
+      if (b.metaLines) {
+        by += 12;
+        ctx.fillStyle = '#999';
+        ctx.font = '22px ' + IMG_FONT;
+        b.metaLines.forEach(function (line, i) {
+          ctx.fillText(line, padX, by + i * 32);
+        });
+        by += b.metaLines.length * 32;
+      }
+      by += 32;
+    });
+
+    // 页脚
+    ctx.fillStyle = '#bbb';
+    ctx.font = '20px ' + IMG_FONT;
+    ctx.fillText('100diary', padX, H - padBottom);
+
+    showImage(canvas.toDataURL('image/png'), 'diary-' + day.date + '.png');
+  }
+
+  function isIOS() {
+    return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  function downloadImage() {
+    var a = document.createElement('a');
+    a.href = elImg.src;
+    a.download = lastImageName || 'diary.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function showImage(dataUrl, filename) {
+    elImg.src = dataUrl;
+    lastImageName = filename;
+    elImgHint.textContent = isIOS()
+      ? '长按图片，选择「存储图像」即可保存到相册'
+      : '已自动下载；也可点击「下载图片」或右键图片保存';
+    elImgBackdrop.hidden = false;
+    if (!isIOS()) downloadImage();
+  }
+
+  elImgBackdrop.addEventListener('click', function (ev) {
+    if (ev.target === elImgBackdrop) elImgBackdrop.hidden = true;
   });
+  document.getElementById('btn-img-close').addEventListener('click', function () {
+    elImgBackdrop.hidden = true;
+  });
+  document.getElementById('btn-img-download').addEventListener('click', downloadImage);
 
   // ---------- 导出 ----------
   document.getElementById('btn-export').addEventListener('click', function () {
@@ -336,13 +643,7 @@
         for (var i = 0; i < parsed.entries.length; i++) {
           var e = parsed.entries[i];
           if (!e || !validDateStr(e.date) || !Array.isArray(e.items)) continue;
-          var items = [];
-          for (var j = 0; j < e.items.length; j++) {
-            var it = e.items[j];
-            if (it && typeof it.event === 'string' && it.event.trim()) {
-              items.push({ event: it.event, reaction: typeof it.reaction === 'string' ? it.reaction : '' });
-            }
-          }
+          var items = normalizeItems(e.items);
           if (items.length) {
             var id = (typeof e.id === 'string' && e.id &&
               !entries.some(function (x) { return x.id === e.id; }))
@@ -359,6 +660,7 @@
         data = { entries: entries };
         expanded.clear();
         editing = null;
+        draft = null;
         persist();
         render();
         toast('导入完成：' + entries.length + ' 天');
@@ -372,5 +674,6 @@
   // ---------- 初始化 ----------
   elDate.value = todayStr();
   load();
+  renderFormRows();
   render();
 })();

@@ -1,5 +1,6 @@
 /* 100diary — 全局样式（极简，无动画特效） */
 
+[hidden] { display: none !important; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -43,12 +44,20 @@ label { display: block; font-size: 13px; color: #555; margin-bottom: 12px; }
 .btn.danger:hover { color: #b00020; border-color: #b00020; }
 .btn.toggle { width: 28px; padding: 2px 0; }
 
+.rows-label { font-size: 13px; color: #555; margin: 2px 0 10px; }
+.frow { margin-bottom: 14px; }
+.pickers { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.btn.pick { flex: 1; min-width: 110px; min-height: 42px; color: #777; border-style: dashed; }
+.btn.pick.picked { color: #222; border-style: solid; font-weight: 500; }
+.btn.add-row { color: #555; }
+.form-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 28px 0 10px; flex-wrap: wrap; }
 .toolbar .group { display: flex; gap: 8px; }
 
 ul.list { list-style: none; margin: 0; padding: 0; }
 li.day { background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; margin-bottom: 8px; }
-.day-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+.day-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; flex-wrap: wrap; }
 .day-date { font-weight: 600; font-size: 14px; }
 .day-count { font-size: 12px; color: #888; white-space: nowrap; }
 .day-actions { margin-left: auto; display: flex; gap: 6px; }
@@ -60,6 +69,75 @@ li.day { background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; margin
 .item-actions { margin-top: 6px; display: flex; gap: 6px; }
 .item .inp { margin-top: 6px; }
 .empty { color: #999; font-size: 13px; padding: 8px 2px; }
+
+/* 底部弹框选择（移动端底部上滑 / 桌面端居中） */
+.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 20; }
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  background: #fff;
+  border-radius: 14px 14px 0 0;
+  padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+}
+.sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: #d5d5d5; margin: 4px auto 10px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sheet-head h3 { font-size: 15px; margin: 0; font-weight: 600; }
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; overflow-y: auto; padding-bottom: 4px; }
+.chip {
+  font: inherit;
+  font-size: 15px;
+  padding: 13px 6px;
+  min-height: 46px;
+  border: 1px solid #d5d5d5;
+  border-radius: 10px;
+  background: #fff;
+  color: #222;
+  cursor: pointer;
+}
+.chip.selected { background: #222; border-color: #222; color: #fff; }
+@media (min-width: 600px) {
+  .chips { grid-template-columns: repeat(4, 1fr); }
+  .sheet {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: 10vh;
+    width: min(520px, 92vw);
+    border-radius: 14px;
+  }
+}
+
+/* 日记图片预览 */
+.img-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.img-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.img-card img { max-width: 100%; max-height: 60vh; object-fit: contain; display: block; margin: 0 auto; border: 1px solid #eee; }
+.img-hint { font-size: 12px; color: #888; margin: 10px 0; text-align: center; }
+.img-actions { display: flex; gap: 8px; justify-content: center; }
 
 footer { max-width: 720px; margin: 0 auto; padding: 14px 16px 32px; font-size: 12px; color: #999; }
 #toast {

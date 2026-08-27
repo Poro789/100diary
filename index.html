@@ -27,13 +27,12 @@
         <input type="date" id="f-date" class="inp">
       </label>
     </div>
-    <label>事件
-      <input type="text" id="f-event" class="inp" placeholder="发生了什么" autocomplete="off">
-    </label>
-    <label>状态 / 反应（选填）
-      <textarea id="f-reaction" class="inp" rows="2" placeholder="如情绪、身体感受等，可留空"></textarea>
-    </label>
-    <button type="submit" class="btn primary">保存</button>
+    <div class="rows-label">事件（同一天可记录多条，每条可独立选择情绪/身体）</div>
+    <div id="form-rows"></div>
+    <div class="form-btns">
+      <button type="button" class="btn add-row" id="btn-add-row">＋ 添加事件</button>
+      <button type="submit" class="btn primary">保存</button>
+    </div>
   </form>
 
   <div class="toolbar">
@@ -54,6 +53,29 @@
 </footer>
 
 <div id="toast"></div>
+
+<!-- 情绪/身体选择：底部上滑面板（移动端）/ 居中弹层（桌面端） -->
+<div id="sheet-backdrop" class="backdrop" hidden></div>
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-handle"></div>
+  <div class="sheet-head">
+    <h3 id="sheet-title"></h3>
+    <button type="button" class="btn" id="btn-sheet-close">关闭</button>
+  </div>
+  <div id="sheet-options" class="chips"></div>
+</div>
+
+<!-- 日记图片预览 -->
+<div id="img-backdrop" class="img-backdrop" hidden>
+  <div class="img-card">
+    <img id="img-preview" alt="日记图片">
+    <p id="img-hint" class="img-hint"></p>
+    <div class="img-actions">
+      <button type="button" class="btn primary" id="btn-img-download">下载图片</button>
+      <button type="button" class="btn" id="btn-img-close">关闭</button>
+    </div>
+  </div>
+</div>
 
 <script src="./js/app.js"></script>
 </body>
