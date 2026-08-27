@@ -324,7 +324,7 @@
       div.className = 'frow';
       var inp = document.createElement('textarea');
       inp.className = 'inp ev-inp';
-      inp.rows = 1;
+      inp.rows = 3;
       inp.placeholder = '发生了什么';
       inp.value = row.event;
       inp.addEventListener('input', function () {
@@ -496,13 +496,14 @@
       if (editing && editing.dayId === day.id && editing.index === index) {
         var evIn = document.createElement('textarea');
         evIn.className = 'inp ev-inp';
-        evIn.rows = 1;
+        evIn.rows = 3;
         evIn.value = draft.event;
         evIn.addEventListener('input', function () {
           draft.event = evIn.value;
           autosize(evIn);
         });
         autosize(evIn);
+        // 保存/取消与情绪、身体选择按钮同一行（同高），输入框独占整行宽度
         var picks = document.createElement('div');
         picks.className = 'pickers';
         picks.appendChild(pickBtn('情绪', 'mood', MOOD_OPTIONS, draft.mood, function (v) {
@@ -513,16 +514,6 @@
           draft.body = v;
           render();
         }));
-        var main = document.createElement('div');
-        main.className = 'item-main';
-        main.appendChild(evIn);
-        main.appendChild(picks);
-        if (item.reaction) {
-          var note = document.createElement('p');
-          note.className = 'item-reaction';
-          note.textContent = '旧版自由文本将保留：' + item.reaction;
-          main.appendChild(note);
-        }
         var ok = button('保存', function () {
           var v = draft.event.trim();
           if (!v) { toast('事件不能为空'); return; }
@@ -537,12 +528,19 @@
           draft = null;
           render();
         });
-        var act = document.createElement('span');
-        act.className = 'item-actions';
-        act.appendChild(ok);
-        act.appendChild(cancel);
+        picks.appendChild(ok);
+        picks.appendChild(cancel);
+        var main = document.createElement('div');
+        main.className = 'item-main';
+        main.appendChild(evIn);
+        main.appendChild(picks);
+        if (item.reaction) {
+          var note = document.createElement('p');
+          note.className = 'item-reaction';
+          note.textContent = '旧版自由文本将保留：' + item.reaction;
+          main.appendChild(note);
+        }
         row.appendChild(main);
-        row.appendChild(act);
         evIn.focus();
       } else {
         var main2 = document.createElement('div');
@@ -551,12 +549,15 @@
         ev.className = 'item-event';
         ev.textContent = item.event;
         main2.appendChild(ev);
+        // 操作按钮与「情绪 ·/身体 ·」信息同一行（信息在左、按钮靠右）
+        var foot2 = document.createElement('div');
+        foot2.className = 'item-foot';
         var meta = itemMeta(item);
         if (meta) {
           var rc = document.createElement('p');
           rc.className = 'item-reaction';
           rc.textContent = meta;
-          main2.appendChild(rc);
+          foot2.appendChild(rc);
         }
         var act2 = document.createElement('span');
         act2.className = 'item-actions';
@@ -566,8 +567,9 @@
           render();
         }));
         act2.appendChild(button('删除', function () { deleteItem(day, index); }, 'danger'));
+        foot2.appendChild(act2);
+        main2.appendChild(foot2);
         row.appendChild(main2);
-        row.appendChild(act2);
       }
       body.appendChild(row);
     });
