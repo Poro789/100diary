@@ -206,6 +206,12 @@
     return b;
   }
 
+  // 事件输入：多行自动增高（超出上限后内部滚动）
+  function autosize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }
+
   // ---------- 日记名称（与大标题结合：标题 = 「用户名称」+ 的日记） ----------
   function renderTitle() {
     elTitle.textContent = data.name ? data.name + '的日记' : '日记';
@@ -316,13 +322,20 @@
     formRows.forEach(function (row, i) {
       var div = document.createElement('div');
       div.className = 'frow';
-      var inp = document.createElement('input');
-      inp.type = 'text';
-      inp.className = 'inp';
+      var inp = document.createElement('textarea');
+      inp.className = 'inp ev-inp';
+      inp.rows = 1;
       inp.placeholder = '发生了什么';
-      inp.autocomplete = 'off';
       inp.value = row.event;
-      inp.addEventListener('input', function () { row.event = inp.value; });
+      inp.addEventListener('input', function () {
+        row.event = inp.value;
+        autosize(inp);
+      });
+      // Enter 换行；Ctrl/⌘+Enter 提交
+      inp.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) elForm.requestSubmit();
+      });
+      autosize(inp);
       var picks = document.createElement('div');
       picks.className = 'pickers';
       picks.appendChild(pickBtn('情绪', 'mood', MOOD_OPTIONS, row.mood, function (v) {
@@ -480,11 +493,15 @@
       var row = document.createElement('div');
       row.className = 'item';
       if (editing && editing.dayId === day.id && editing.index === index) {
-        var evIn = document.createElement('input');
-        evIn.type = 'text';
-        evIn.className = 'inp';
+        var evIn = document.createElement('textarea');
+        evIn.className = 'inp ev-inp';
+        evIn.rows = 1;
         evIn.value = draft.event;
-        evIn.addEventListener('input', function () { draft.event = evIn.value; });
+        evIn.addEventListener('input', function () {
+          draft.event = evIn.value;
+          autosize(evIn);
+        });
+        autosize(evIn);
         var picks = document.createElement('div');
         picks.className = 'pickers';
         picks.appendChild(pickBtn('情绪', 'mood', MOOD_OPTIONS, draft.mood, function (v) {
