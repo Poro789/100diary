@@ -6,7 +6,7 @@
  *
  * 数据结构（与导出文件一致，面向未来 AI 分析导出设计，无需迁移）：
  * {
- *   "name": "日记名称（选填；未设置时界面显示默认「日记」）",
+ *   "name": "用户名称（选填）；界面标题显示为「XX的日记」，未设置时显示「日记」",
  *   "entries": [
  *     {
  *       "id": "20260826-001",
@@ -21,7 +21,7 @@
  * }
  *
  * 字段说明：
- *   name      选填，日记名称（标题编辑处设置）
+ *   name      选填，用户名称（标题编辑处设置；显示为「XX的日记」）
  *   event     必填，客观描述
  *   mood      选填，MOOD_OPTIONS 之一；未选时省略该字段
  *   body      选填，BODY_OPTIONS 之一；未选时省略该字段
@@ -206,9 +206,9 @@
     return b;
   }
 
-  // ---------- 日记名称（与大标题结合） ----------
+  // ---------- 日记名称（与大标题结合：标题 = 「用户名称」+ 的日记） ----------
   function renderTitle() {
-    elTitle.textContent = data.name || '日记';
+    elTitle.textContent = data.name ? data.name + '的日记' : '日记';
   }
 
   function startTitleEdit() {
@@ -219,7 +219,7 @@
     input.id = 'title-input';
     input.className = 'inp title-input';
     input.value = data.name;
-    input.placeholder = '日记';
+    input.placeholder = '你的名字';
     input.maxLength = 20;
     input.autocomplete = 'off';
     head.insertBefore(input, elTitle);
@@ -260,17 +260,22 @@
     return b;
   }
 
-  // 交互：点已选中的选项 = 取消选择；不选 = 直接关闭
+  // 交互：点选项 = 选中；点已选中的选项 = 取消；
+  // 选择后弹框保持打开，可停留、反复修改，完成后手动关闭
   function openSheet(kind, options, current, onPick) {
     elSheetTitle.textContent = kind === 'mood' ? '选择情绪' : '选择身体';
     elSheetOptions.textContent = '';
+    var selected = current;
     options.forEach(function (opt) {
-      var selected = opt === current;
       var em = emojiOf(kind, opt);
-      var c = chip(em ? em + ' ' + opt : opt, selected);
+      var c = chip(em ? em + ' ' + opt : opt, opt === selected);
       c.addEventListener('click', function () {
-        onPick(selected ? '' : opt);
-        closeSheet();
+        selected = (opt === selected) ? '' : opt;
+        Array.prototype.forEach.call(elSheetOptions.children, function (ch) {
+          ch.classList.remove('selected');
+        });
+        if (selected) c.classList.add('selected');
+        onPick(selected);
       });
       elSheetOptions.appendChild(c);
     });
@@ -288,6 +293,7 @@
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
       closeSheet();
+      closeDateDialog();
       elImgBackdrop.hidden = true;
     }
   });
@@ -403,12 +409,32 @@
     render();
   }
 
-  function editDate(dayId) {
+  // ---------- 改日期：专用弹框（原生 date 控件，移动端自动弹系统日期选择器） ----------
+  var elDateDialog = document.getElementById('date-dialog');
+  var elDateDialogBackdrop = document.getElementById('date-backdrop');
+  var elDateDialogInput = document.getElementById('date-dialog-input');
+  var dateDialogDayId = null;
+
+  function openDateDialog(dayId) {
     var day = findDay(dayId);
     if (!day) return;
-    var v = prompt('修改日期（格式 YYYY-MM-DD）：', day.date);
-    if (v === null) return;
-    v = v.trim();
+    dateDialogDayId = dayId;
+    elDateDialogInput.value = day.date;
+    elDateDialogBackdrop.hidden = false;
+    elDateDialog.hidden = false;
+    elDateDialogInput.focus();
+  }
+
+  function closeDateDialog() {
+    dateDialogDayId = null;
+    elDateDialogBackdrop.hidden = true;
+    elDateDialog.hidden = true;
+  }
+
+  function changeDayDate(dayId, newDate) {
+    var day = findDay(dayId);
+    if (!day) return;
+    var v = newDate.trim();
     if (!validDateStr(v)) { toast('日期格式无效'); return; }
     var other = null;
     for (var i = 0; i < data.entries.length; i++) {
@@ -429,6 +455,15 @@
     persist();
     render();
   }
+
+  elDateDialogBackdrop.addEventListener('click', closeDateDialog);
+  document.getElementById('btn-date-cancel').addEventListener('click', closeDateDialog);
+  document.getElementById('btn-date-ok').addEventListener('click', function () {
+    var dayId = dateDialogDayId;
+    var v = elDateDialogInput.value;
+    closeDateDialog();
+    if (dayId) changeDayDate(dayId, v);
+  });
 
   function itemMeta(item) {
     var meta = [];
@@ -461,6 +496,7 @@
           render();
         }));
         var main = document.createElement('div');
+        main.className = 'item-main';
         main.appendChild(evIn);
         main.appendChild(picks);
         if (item.reaction) {
@@ -492,6 +528,7 @@
         evIn.focus();
       } else {
         var main2 = document.createElement('div');
+        main2.className = 'item-main';
         var ev = document.createElement('p');
         ev.className = 'item-event';
         ev.textContent = item.event;
@@ -557,8 +594,8 @@
 
       var actions = document.createElement('span');
       actions.className = 'day-actions';
-      actions.appendChild(button('图片', function () { renderDayImage(day); }));
-      actions.appendChild(button('改日期', function () { editDate(day.id); }));
+      actions.appendChild(button('导出图片', function () { renderDayImage(day); }));
+      actions.appendChild(button('改日期', function () { openDateDialog(day.id); }));
       actions.appendChild(button('删除当天', function () { deleteDay(day.id); }, 'danger'));
 
       head.appendChild(toggle);
@@ -606,7 +643,7 @@
     var contentW = W - padX * 2;
     var meas = document.createElement('canvas').getContext('2d');
 
-    var name = data.name;
+    var name = data.name ? data.name + '的日记' : '';
     var headLine = 'Day ' + dayNum(day.date) + ' · ' + day.date + ' · ' + weekday(day.date);
 
     var nameLines = [];

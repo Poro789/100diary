@@ -55,7 +55,8 @@
 
 <footer>
   数据存储：本机浏览器 localStorage（键名 diary.records.v1），不经过任何网络。<br>
-  备份：「导出 JSON」保存备份文件；换设备或浏览器时用「导入 JSON」选择备份文件恢复（导入将替换当前数据）。
+  备份：「导出 JSON」保存备份文件；换设备或浏览器时用「导入 JSON」选择备份文件恢复（导入将替换当前数据）。<br>
+  <a href="https://github.com/Poro789/100diary" target="_blank" rel="noopener">100diary · GitHub</a> · MIT 许可 · 纯本地应用，数据仅存于本机
 </footer>
 
 <div id="toast"></div>
@@ -68,7 +69,7 @@
     <h3 id="sheet-title"></h3>
     <button type="button" class="btn" id="btn-sheet-close">关闭</button>
   </div>
-  <p class="sheet-hint">点击已选中的选项可取消；不选直接关闭即可</p>
+  <p class="sheet-hint">点选项即可选中或取消，可反复修改；完成后点「关闭」</p>
   <div id="sheet-options" class="chips"></div>
 </div>
 
@@ -81,6 +82,17 @@
       <button type="button" class="btn primary" id="btn-img-download">下载图片</button>
       <button type="button" class="btn" id="btn-img-close">关闭</button>
     </div>
+  </div>
+</div>
+
+<!-- 改日期：专用日期弹框（原生 date 控件） -->
+<div id="date-backdrop" class="backdrop" hidden></div>
+<div id="date-dialog" class="date-dialog" hidden>
+  <h3>修改日期</h3>
+  <input type="date" id="date-dialog-input" class="inp">
+  <div class="date-dialog-actions">
+    <button type="button" class="btn" id="btn-date-cancel">取消</button>
+    <button type="button" class="btn primary" id="btn-date-ok">确定</button>
   </div>
 </div>
 
