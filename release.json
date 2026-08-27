@@ -1,8 +1,0 @@
-{
-  "tag_name": "v1.0.0",
-  "target_commitish": "main",
-  "name": "v1.0.0",
-  "draft": false,
-  "prerelease": false,
-  "body": "首个版本：单文件离线日记工具，下载后双击即可使用。\n\n## 功能\n\n- 记录「事件 + 可选的状态/反应」，同一天可多次追加\n- 历史按日期倒序，可展开/折叠；单条或整天编辑、删除（带确认）、修改日期（冲突自动合并）\n- 导出 / 导入 JSON 备份，换设备可恢复\n- 数据仅存浏览器 localStorage，零网络请求、零依赖\n- 字段中性，无情绪方向预设，无打卡激励\n\n## 文件\n\n- `diary.html`：独立应用文件（与仓库 `index.html` 相同），双击用浏览器打开即可\n\n## 说明\n\n- 数据结构为 `{ entries: [{ id, date, items: [{ event, reaction }] }] }`，面向未来「导出给 AI 分析」设计，届时无需数据迁移\n- 兼容 Chrome / Edge / Firefox，桌面与移动端"
-}

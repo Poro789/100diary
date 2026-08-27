@@ -9,3 +9,6 @@ Thumbs.db
 
 # Misc
 *.log
+
+# Local scratch (release body drafts)
+release.json
