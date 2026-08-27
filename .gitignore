@@ -11,4 +11,4 @@ Thumbs.db
 *.log
 
 # Local scratch (release body drafts)
-release.json
+release*.json
